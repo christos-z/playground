@@ -3,9 +3,10 @@
  */
 module.exports = function (Router){
 
-    Router.get('/', function () {
-        console.log('loaded root');
+    Router.get('/', index);
+
+    function *index() {
         this.body = 'this is the homepage';
-    });
+    };
 
 };

@@ -1,34 +1,30 @@
-var express = require('express');
-var router = express.Router();
+var mongoose = require('mongoose');
+mongoose.connect('mongodb://localhost/stations');
+var stationSchema = mongoose.Schema({});
 
 
-var MongoClient = require('mongodb').MongoClient;
-var assert = require('assert');
-var ObjectId = require('mongodb').ObjectID;
+var ListOfStations = mongoose.model('list_of_stations', stationSchema);
 
-var url = 'mongodb://localhost:27017/test';
+function * loopThroughListOfStations(listOfStations, mainStationIndex) {
+    for (var StationInformation of listOfStations){
+        yield StationInformation;
+    }
+    if(mainStationIndex in listOfStations){
+        mainStationIndex++;
+        yield* loopThroughListOfStations(listOfStations, mainStationIndex);
 
-var insertDocument = function(db, callback) {
-    db.collection('')
+    }
 }
 
+function returnStation(StationInformation){
+
+}
+ListOfStations.find({}, function (err, listOfStations) {
+        var stationLoop = loopThroughListOfStations;
+        for (var n of stationLoop(listOfStations, 0) ) {
+            console.log(n);
+        }
+    }
+);
 
 
-
-
-
-// middleware that is specific to this router
-router.use(function timeLog(req, res, next) {
-    console.log('Time: ', Date.now());
-    next();
-});
-// define the home page route
-router.get('/', function(req, res) {
-    res.send('Birds home page');
-});
-// define the about route
-router.get('/about', function(req, res) {
-    res.send('About birds');
-});
-
-module.exports = router;
