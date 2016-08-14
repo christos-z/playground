@@ -35,14 +35,14 @@ stations.find({}, function (err, listOfStations) {
 
             co(function * () {
                 try {
-                    let tflApiResponse = yield apiRequest(params);
 
+                    let tflApiResponse = yield apiRequest(params);
                     var parsedTflApiResponse = JSON.parse(tflApiResponse.body);
                     var shortestJourney = _.minBy(parsedTflApiResponse.journeys, function(o) { return o.duration; });
 
                     var journeyObject = new JourneyObject(shortestJourney);
                     stations.update({_id : station[0]._id},{ 'Journeys' : journeyObject}, function(err,affected) {
-                        // console.log(affected);
+                        console.log(affected);
                     });
 
                 }
@@ -57,17 +57,18 @@ stations.find({}, function (err, listOfStations) {
 //todo fix this. (remove the 5 limiter)
 function * loopThroughListOfStations(listOfStations, mainStationIndex) {
     for (var stationIndex in listOfStations){
-        if(stationIndex == mainStationIndex || stationIndex > 5){
+        if(stationIndex == mainStationIndex){
             continue;
         }
         yield [listOfStations[mainStationIndex], listOfStations[stationIndex]];
 
     }
     if(mainStationIndex in listOfStations){
-        if(mainStationIndex < 5){
-            mainStationIndex++;
-            yield* loopThroughListOfStations(listOfStations, mainStationIndex);
+        mainStationIndex++;
+        //if the index is undefined, it means we've run through all the stations and should just simply return;
+        if (listOfStations[mainStationIndex] == null) {
+            return;
         }
-
+        yield* loopThroughListOfStations(listOfStations, mainStationIndex);
     }
 }
