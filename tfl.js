@@ -2,14 +2,13 @@
 
 //Load wrappers and libraries
 const co = require("co");
-const mongoose = require('mongoose');
 const _ = require('lodash');
 
 const apiRequest = require('./api');
 const JourneyObject = require('./models/JourneyObject');
 const tflApiUrl = `https://api.tfl.gov.uk/journey/journeyresults/`;
 
-var RateLimiter = require('limiter').RateLimiter;
+const RateLimiter = require('limiter').RateLimiter;
 
 //Stations DB connection object.
 const StationsDB = {
