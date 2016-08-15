@@ -1,6 +1,7 @@
 /**
  * Created by Christos on 14/08/2016.
  */
+//TODO improve the structure of this object to allow for better storing inside mongodb
 var _ = require('lodash');
 
 module.exports = function (journeyObject) {

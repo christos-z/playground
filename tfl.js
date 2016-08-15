@@ -9,7 +9,9 @@ const apiRequest = require('./api');
 const JourneyObject = require('./models/JourneyObject');
 const tflApiUrl = `https://api.tfl.gov.uk/journey/journeyresults/`;
 
-//Connect to stations database
+var RateLimiter = require('limiter').RateLimiter;
+
+//Stations DB connection object.
 const StationsDB = {
     DB: 'mongodb://localhost/stations',
     Table: 'list_of_stations',
@@ -21,41 +23,23 @@ const StationsDB = {
 
 };
 
-//retrieve list of stations from mongo db
+//Selects the list_of_stations table from the stations DB.
 const stations = require('./mongoConnection')(StationsDB);
 
+//retrieves every single station object stored inside the mongo database.
 stations.find({}, function (err, listOfStations) {
 
-        for (let station of loopThroughListOfStations(listOfStations, 0) ) {
-
-            let from = station[0]['ICS Code'];
-            let to = station[1]['ICS Code'];
-
-            let params = {requestUrl : `${tflApiUrl}${from}/to/${to}`};
-
-            co(function * () {
-                try {
-
-                    let tflApiResponse = yield apiRequest(params);
-                    var parsedTflApiResponse = JSON.parse(tflApiResponse.body);
-                    var shortestJourney = _.minBy(parsedTflApiResponse.journeys, function(o) { return o.duration; });
-
-                    var journeyObject = new JourneyObject(shortestJourney);
-                    stations.update({_id : station[0]._id},{ 'Journeys' : journeyObject}, function(err,affected) {
-                        console.log(affected);
-                    });
-
-                }
-                catch (e) {
-                    console.log(e);
-                }
-            });
-        }
+        var tflStations = retrieveStationPairs(0, listOfStations);
+        retrieveStationJourneyFromApi(tflStations);
     }
 );
 
-//todo fix this. (remove the 5 limiter)
-function * loopThroughListOfStations(listOfStations, mainStationIndex) {
+
+//Loops through the list of stations, retrived from mongo DB and retrieves an array of
+//each station together with the main station index. Once all adjoning stations have been retrieved
+//for the choosen station index, the station index value is incremented and the function is looped again
+//untill all stations and adjoining stations are retrieved.
+function * retrieveStationPairs(mainStationIndex, listOfStations) {
     for (var stationIndex in listOfStations){
         if(stationIndex == mainStationIndex){
             continue;
@@ -69,6 +53,50 @@ function * loopThroughListOfStations(listOfStations, mainStationIndex) {
         if (listOfStations[mainStationIndex] == null) {
             return;
         }
-        yield* loopThroughListOfStations(listOfStations, mainStationIndex);
+        yield* retrieveStationPairs(mainStationIndex, listOfStations);
+    }
+}
+
+function retrieveStationJourneyFromApi (tflStaions) {
+    var station = tflStaions.next().value;
+
+    //Throttle the requests to alieviete strain on tfl's API server
+    var limiter = new RateLimiter(1, 3000);
+    limiter.removeTokens(1, function() {
+
+        let from = station[0]['ICS Code'];
+        let to = station[1]['ICS Code'];
+
+        let params = {requestUrl : `${tflApiUrl}${from}/to/${to}`};
+
+        co(function * () {
+            try {
+
+                let tflApiResponse = yield apiRequest(params);
+                var parsedTflApiResponse = JSON.parse(tflApiResponse.body);
+                var shortestJourney = _.minBy(parsedTflApiResponse.journeys, function(o) { return o.duration; });
+
+                var journeyObject = new JourneyObject(shortestJourney);
+                stations.update({_id : station[0]._id},
+                    {
+                        //TODO change this from a push to a propper update with ICS code as a key
+                        $push: {
+                            'Journeys' : journeyObject
+                        }
+                    }, function(err,affected) {
+                    console.log(affected);
+                });
+
+            }
+            catch (e) {
+                //TODO catch this error properlly and do something should this occour
+                console.log(e);
+            }
+        });
+    });
+    if(tflStaions.next().done == false){
+        limiter.removeTokens(1, function() {
+            retrieveStationJourneyFromApi(tflStaions);
+        });
     }
 }
