@@ -56,8 +56,8 @@ function * retrieveStationPairs(mainStationIndex, listOfStations) {
     }
 }
 
-function retrieveStationJourneyFromApi (tflStaions) {
-    var station = tflStaions.next().value;
+function retrieveStationJourneyFromApi (tflStations) {
+    var station = tflStations.next().value;
 
     //Throttle the requests to alieviete strain on tfl's API server
     var limiter = new RateLimiter(1, 3000);
@@ -74,17 +74,39 @@ function retrieveStationJourneyFromApi (tflStaions) {
                 let tflApiResponse = yield apiRequest(params);
                 var parsedTflApiResponse = JSON.parse(tflApiResponse.body);
                 var shortestJourney = _.minBy(parsedTflApiResponse.journeys, function(o) { return o.duration; });
+                var stationToUpdate = yield stations.find({_id : station[0]._id});
+
+                if (!stationToUpdate.Journeys) {
+                    stationToUpdate.Journeys = {};
+                }
 
                 var journeyObject = new JourneyObject(shortestJourney);
-                stations.update({_id : station[0]._id},
-                    {
-                        //TODO change this from a push to a propper update with ICS code as a key
-                        $push: {
-                            'Journeys' : journeyObject
-                        }
-                    }, function(err,affected) {
-                    console.log(affected);
-                });
+
+                stationToUpdate.Journeys[Object.keys(journeyObject)] = journeyObject;
+
+
+                try {
+                    const savedStation = yield stationToUpdate.save();
+                } catch (e) {
+                    console.log(e);
+                    throw Error('Mongoose couldn\'t save for some reason');
+                }
+
+                // stations.update({_id : station[0]._id},
+                //     {
+                //         //TODO change this from a push to a propper update with ICS code as a key
+                //         $set: {
+                //             Journeys : journeyObject
+                //         }
+                //
+                //     },
+                //     {
+                //         upsert:true,
+                //         multi:true
+                //     },
+                //     function(err,affected) {
+                //     console.log(affected);
+                // });
 
             }
             catch (e) {
@@ -93,9 +115,10 @@ function retrieveStationJourneyFromApi (tflStaions) {
             }
         });
     });
-    if(tflStaions.next().done == false){
+    if(tflStations.next().done == false){
         limiter.removeTokens(1, function() {
-            retrieveStationJourneyFromApi(tflStaions);
+            retrieveStationJourneyFromApi(tflStations);
+            // return;
         });
     }
 }

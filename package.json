@@ -16,5 +16,8 @@
     "lodash": "^4.15.0",
     "mongoose": "^4.5.8",
     "pug": "^2.0.0-beta4"
+  },
+  "devDependencies": {
+    "eslint": "^3.3.1"
   }
 }

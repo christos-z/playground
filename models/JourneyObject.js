@@ -8,12 +8,11 @@ module.exports = function (journeyObject) {
 
     var destinationIcsCode = journeyObject.legs[journeyObject.legs.length - 1].arrivalPoint.icsCode;
 
-    this.journey = {};
-    this.journey[destinationIcsCode] = {};
-    this.journey[destinationIcsCode].duration = journeyObject.duration;
-    this.journey[destinationIcsCode].startDateTime = journeyObject.startDateTime;
-    this.journey[destinationIcsCode].arrivalDateTime = journeyObject.arrivalDateTime;
-    this.journey[destinationIcsCode].journeyLegs = {};
+    this[destinationIcsCode] = {};
+    this[destinationIcsCode].duration = journeyObject.duration;
+    this[destinationIcsCode].startDateTime = journeyObject.startDateTime;
+    this[destinationIcsCode].arrivalDateTime = journeyObject.arrivalDateTime;
+    this[destinationIcsCode].journeyLegs = {};
 
     var journeyLegs = {};
 
@@ -30,5 +29,5 @@ module.exports = function (journeyObject) {
 
     });
 
-    this.journey[destinationIcsCode].journeyLegs = journeyLegs;
+    this[destinationIcsCode].journeyLegs = journeyLegs;
 }
