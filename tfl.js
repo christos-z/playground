@@ -22,11 +22,47 @@ const StationsDB = {
 
 };
 
-//Selects the list_of_stations table from the stations DB.
-const stations = require('./mongoConnection')(StationsDB);
 
+var mongoose = require('mongoose');
+mongoose.connect('mongodb://localhost/stations');
+
+// var Stations = mongoose.model('list_of_stations',  {
+//     'ICS Code': Number,
+//     'Journeys' : Array,
+//     'Notes' :  String
+// });
+//
+// var test = yield Stations.findOne({ 'ICS Code': 1000002 });
+// console.log(test);
+//
+//
+// Stations.findOne({ 'ICS Code': 1000002 }).exec()
+//     .then(function(station) {
+//         console.log(station);
+//         //This is where I'd save also
+//     })
+//     .catch(function(err){
+//         // just need one of these
+//         console.log('error:', err);
+//     });
+// // Kitten.find({_id : '1000002'});
+//
+// // Kitten.findOne({ 'ICS Code': '/^1000002/' }, callback);
+//
+// Stations.findOne({ 'ICS Code': 1000002 }).exec()
+//     .then(function(station) {
+//         console.log(station);
+//     });
+//
+
+//Selects the list_of_stations table from the stations DB.
+const Stations = mongoose.model('list_of_stations',  {
+    'ICS Code': Number,
+    'Journeys' : Object,
+    'Notes' :  String
+});
 //retrieves every single station object stored inside the mongo database.
-stations.find({}, function (err, listOfStations) {
+Stations.find({}, function (err, listOfStations) {
 
         var tflStations = retrieveStationPairs(0, listOfStations);
         retrieveStationJourneyFromApi(tflStations);
@@ -39,6 +75,7 @@ stations.find({}, function (err, listOfStations) {
 //for the choosen station index, the station index value is incremented and the function is looped again
 //untill all stations and adjoining stations are retrieved.
 function * retrieveStationPairs(mainStationIndex, listOfStations) {
+    var stationIndex = 0;
     for (var stationIndex in listOfStations){
         if(stationIndex == mainStationIndex){
             continue;
@@ -70,31 +107,38 @@ function retrieveStationJourneyFromApi (tflStations) {
 
         co(function * () {
             try {
-
                 let tflApiResponse = yield apiRequest(params);
                 var parsedTflApiResponse = JSON.parse(tflApiResponse.body);
                 var shortestJourney = _.minBy(parsedTflApiResponse.journeys, function(o) { return o.duration; });
-                var stationToUpdate = yield stations.find({_id : station[0]._id});
+                var stationToUpdate = yield Stations.findOne({_id : station[0]._id});
 
+
+                // stationToUpdate.Notes = 'changing notes test';
+                // console.log(stationToUpdate);
+                // stationToUpdate.save();
+                // return;
                 if (!stationToUpdate.Journeys) {
                     stationToUpdate.Journeys = {};
                 }
 
                 var journeyObject = new JourneyObject(shortestJourney);
 
-                stationToUpdate.Journeys[Object.keys(journeyObject)] = journeyObject;
+                // stationToUpdate.Journeys[Object.keys(journeyObject)] = journeyObject;
 
-
-                try {
-                    const savedStation = yield stationToUpdate.save();
-                } catch (e) {
-                    console.log(e);
-                    throw Error('Mongoose couldn\'t save for some reason');
-                }
+                var apiReturnedJourney = {};
+                apiReturnedJourney[Object.keys(journeyObject)[0]] = journeyObject[Object.keys(journeyObject)[0]];
+                stationToUpdate.Journeys = _.merge(apiReturnedJourney, stationToUpdate.Journeys);
+                stationToUpdate.save();
+                // try {
+                //     const savedStation = yield stationToUpdate.save();
+                // } catch (e) {
+                //     console.log(e);
+                //     throw Error('Mongoose couldn\'t save for some reason');
+                // }
 
                 // stations.update({_id : station[0]._id},
                 //     {
-                //         //TODO change this from a push to a propper update with ICS code as a key
+                //         //TODO change this from a push to a proper update with ICS code as a key
                 //         $set: {
                 //             Journeys : journeyObject
                 //         }
@@ -110,8 +154,8 @@ function retrieveStationJourneyFromApi (tflStations) {
 
             }
             catch (e) {
-                //TODO catch this error properlly and do something should this occour
-                console.log(e);
+                //TODO catch this error properly and do something should this ooccur
+                //                console.log(e);
             }
         });
     });
