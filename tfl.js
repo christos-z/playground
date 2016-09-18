@@ -13,97 +13,104 @@ const RateLimiter = require('limiter').RateLimiter;
 var mongoose = require('mongoose');
 mongoose.connect('mongodb://localhost/stations');
 
-
-//Selects the list_of_stations table from the stations DB.
-const Stations = mongoose.model('list_of_stations',  {
-    'ICS Code': Number,
-    'Journeys' : Object,
-    'Notes' :  String
+const Joruney = mongoose.model('Journeys',  {
+    '_id': String,
+    'Destination From': String,
+    'Destination To': String,
+    'ICS Code From': Number,
+    'ICS Code To': Number,
+    'Duration': Number,
+    'Start Date Time': Date,
+    'End Date Time': Date,
+    'Journey Legs': Object,
+    'mode': Object
 });
-//retrieves every single station object stored inside the mongo database.
-Stations.find({}, function (err, listOfStations) {
-        var tflStations = retrieveStationPairs(0, listOfStations);
-        retrieveStationJourneyFromApi(tflStations);
-    }
-);
 
+var from = 1000001;
+var to = 1000002;
 
-//Loops through the list of stations, retrieved from mongo DB and retrieves an array of
-//each station together with the main station index. Once all adjoining stations have been retrieved
-//for the chosen station index, the station index value is incremented and the function is looped again
-//until all stations and adjoining stations are retrieved.
-
-//TODO can this be refactored to not need any param inputs? It seems reduntant to pass through a
-//main station index if it's going to be incrementing through all station indexes anyway.
-function * retrieveStationPairs(mainStationIndex, listOfStations) {
-
-    for (var stationIndex in listOfStations){
-        if(stationIndex == mainStationIndex){
-            continue;
-        }
-        yield [listOfStations[mainStationIndex], listOfStations[stationIndex]];
-
-    }
-    if(mainStationIndex in listOfStations){
-        mainStationIndex++;
-        //if the index is undefined, it means we've run through all the stations and should just simply return;
-        if (listOfStations[mainStationIndex] == null) {
-            return;
-        }
-        yield* retrieveStationPairs(mainStationIndex, listOfStations);
-    }
-}
-
-function retrieveStationJourneyFromApi (tflStations) {
-    var station = tflStations.next().value;
+function retrieveStationJourneyFromApi () {
 
     //Throttle the requests to alleviate strain on tfl's API server
-    var limiter = new RateLimiter(1, 3000);
+    var limiter = new RateLimiter(1, 1000);
     limiter.removeTokens(1, function() {
 
-        let from = station[0]['ICS Code'];
-        let to = station[1]['ICS Code'];
-
         let params = {requestUrl : `${tflApiUrl}${from}/to/${to}`};
-
         co(function * () {
             try {
                 let tflApiResponse = yield apiRequest(params);
                 var parsedTflApiResponse = JSON.parse(tflApiResponse.body);
                 var shortestJourney = _.minBy(parsedTflApiResponse.journeys, function(o) { return o.duration; });
-                var stationToUpdate = yield Stations.findOne({_id : station[0]._id});
 
-                if (!stationToUpdate.Journeys) {
-                    stationToUpdate.Journeys = {};
-                }
+                var journeyLegs = {};
 
-                var journeyObject = new JourneyObject(shortestJourney);
+                _.forEach(shortestJourney.legs, function(value, key) {
 
-                var icsCode = Object.keys(journeyObject)[0];
-                var apiReturnedJourney = {};
-                apiReturnedJourney[icsCode] = journeyObject[icsCode];
-                stationToUpdate.Journeys = _.merge(apiReturnedJourney, stationToUpdate.Journeys);
+                    journeyLegs[key] = {
+                        'stationName' : value.departurePoint.commonName,
+                        'duration' : value.duration,
+                        'summary' : value.instruction.summary,
+                        'departureTime' : value.departureTime,
+                        'arrivalTime' : value.arrivalTime,
+                        'stationArrival' : value.arrivalPoint.commonName,
+                        'mode' : {
+                            'type' : value.mode.type,
+                            'name' : value.mode.name,
+                            'id' : value.mode.id
+                        }
+
+                    }
+
+                });
+
+                console.log(journeyLegs);
+                var destinationFrom = shortestJourney.legs[0].departurePoint.commonName;
+                var destinationTo = shortestJourney.legs[shortestJourney.legs.length -1].arrivalPoint.commonName;
+
+                var testStation = new Joruney({
+                    '_id' : `${from}/${to}`,
+                    'Destination From' : destinationFrom,
+                    'Destination To' : destinationTo,
+                    'ICS Code From' : from,
+                    'ICS Code To' : to,
+                    'Duration' : shortestJourney.duration,
+                    'Start Date Time' : shortestJourney.departureTime,
+                    'End Date Time' : shortestJourney.arrivalTime,
+                    'Journey Legs' : journeyLegs
+                });
+
                 try {
-                    //TODO instead of saving/overwriting the DB with the new set of data. We should check to see
-                    //if the new set of data has a shorter duration than the exisiting one. And only if it does should we
-                    //overwrite
-                    yield stationToUpdate.save();
-                } catch (e) {
+                    yield testStation.save();
+                    console.log(shortestJourney);
+
+                } catch (e)
+                {
                     console.log(e);
+                    //TODO update if key already exists and new duration is less
                     //TODO add proper error logging.
                     throw Error('Mongoose couldn\'t save for some reason');
                 }
 
             }
             catch (e) {
-                //TODO catch this error properly and do something should this ooccur
+                //TODO catch this error properly and do something should this occur
                 throw Error('Something has gone seriously wrong.');
             }
         });
     });
-    if(tflStations.next().done == false){
-        limiter.removeTokens(1, function() {
-            retrieveStationJourneyFromApi(tflStations);
-        });
-    }
+
+
+    limiter.removeTokens(1, function() {
+        if(from == 1018000) {
+            from = 1000001
+            to++;
+        }else{
+            from++
+        }
+        if(to !== 1018000) {
+            retrieveStationJourneyFromApi();
+        }
+    });
 }
+
+retrieveStationJourneyFromApi();
